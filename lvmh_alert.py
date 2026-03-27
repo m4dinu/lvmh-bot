@@ -1,49 +1,35 @@
-import os
-import requests
-import yfinance as yf
-import feedparser
+import os, requests, yfinance as yf, feedparser
 from datetime import datetime
 
-TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
-CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
-PRICE_LEVELS = [420, 400, 380, 360]
-TICKER = "MC.PA"
+TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
+CHAT = os.environ.get("TELEGRAM_CHAT_ID", "")
+LEVELS = [420, 400, 380, 360]
 
-def send_telegram(message):
-    url = "https://api.telegram.org/bot" + TELEGRAM_TOKEN + "/sendMessage"
-    payload = {
-        "chat_id": CHAT_ID,
-        "text": message,
-        "parse_mode": "HTML",
-        "disable_web_page_preview": False
-    }
-    requests.post(url, json=payload)
+def send(msg):
+    requests.post(
+        "https://api.telegram.org/bot" + TOKEN + "/sendMessage",
+        json={"chat_id": CHAT, "text": msg}
+    )
 
 def check_price():
-    ticker = yf.Ticker(TICKER)
-    data = ticker.history(period="1d", interval="15m")
+    data = yf.Ticker("MC.PA").history(period="1d", interval="15m")
     if data.empty:
         return
     price = round(data["Close"].iloc[-1], 2)
-    print("Pret curent LVMH: " + str(price) + " EUR")
-
-    for level in PRICE_LEVELS:
-        if price < level:
-            msg = (
-                "LVMH (MC.PA) sub " + str(level) + " EUR\n"
-                "Pret curent: " + str(price) + " EUR\n"
-                "Data: " + datetime.utcnow().strftime("%Y-%m-%d %H:%M") + " UTC"
-            )
-            send_telegram(msg)
-            print("Alerta trimisa: sub " + str(level))
+    print(price)
+    for lvl in LEVELS:
+        if price < lvl:
+            send("LVMH sub " + str(lvl) + " EUR. Pret: " + str(price) + " EUR")
             break
 
-AMF_RSS = "https://www.amf-france.org/fr/rss/actualites"
-LVMH_KEYWORDS = ["lvmh", "moet hennessy", "mc.pa", "christian dior"]
-RESULTS_KEYWORDS = ["resultats", "chiffre d affaires", "results", "revenue", "earnings"]
+def check_amf():
+    feed = feedparser.parse("https://www.amf-france.org/fr/rss/actualites")
+    for e in feed.entries:
+        t = e.title.lower()
+        if "lvmh" in t or "moet" in t:
+            send("LVMH - AMF: " + e.title + "\n" + e.get("link", ""))
 
-def fetch_consensus():
-    try:
-        ticker = yf.Ticker(TICKER)
-        info = ticker.info
-        eps_est = info.get("epsForward", "N/A")
+if __name__ == "__main__":
+    check_price()
+    check_amf()
+    print("done")
